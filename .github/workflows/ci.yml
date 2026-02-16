@@ -45,8 +45,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/tgrundtvig/todo-app:latest
-            ghcr.io/tgrundtvig/todo-app:${{ github.sha }}
+            ghcr.io/sgyldenkvist/todo-app:latest
+            ghcr.io/sgyldenkvist/todo-app:${{ github.sha }}
 
   build-and-push-frontend:
     needs: build-and-test
@@ -71,18 +71,28 @@ jobs:
           context: ./frontend
           push: true
           tags: |
-            ghcr.io/tgrundtvig/todo-app-frontend:latest
-            ghcr.io/tgrundtvig/todo-app-frontend:${{ github.sha }}
+            ghcr.io/sgyldenkvist/todo-app-frontend:latest
+            ghcr.io/sgyldenkvist/todo-app-frontend:${{ github.sha }}
 
-  deploy:
+    deploy:
     needs: [build-and-push-image, build-and-push-frontend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Coolify deploy
-        env:
-          WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-        run: |
-          curl -f -X GET "$WEBHOOK_URL" \
-            -H "Authorization: Bearer $COOLIFY_TOKEN"
+      - name: Deploy to Azure VM
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/todo-app
+
+            # Pull the latest images
+            docker compose -f docker-compose.prod.yml pull
+
+            # Restart with the new images
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Clean up old images
+            docker image prune -f
